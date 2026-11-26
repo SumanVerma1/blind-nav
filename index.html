@@ -6,6 +6,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#071426">
 <title>Blind Nav | Smart Mobility</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
 
 <style>
 :root {
@@ -93,7 +95,7 @@ input {
 }
 .contact:last-child {border:0}
 .contact button {padding:9px 12px}
-#maplink {display:none;margin-top:12px;color:#70bdff}
+#maplink {display:none;margin-top:12px;color:#70bdff}\n#gpsMap {width:100%;height:320px;margin-top:14px;border-radius:12px;border:1px solid var(--border);z-index:1}
 #alert {
   display:none;padding:14px;border-radius:12px;
   margin-top:12px;background:#47202d;color:#ffdce1;
@@ -111,6 +113,8 @@ footer {text-align:center;padding:30px;color:var(--muted);font-size:12px}
   .card {padding:13px}
 }
 </style>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
 
 <body>
@@ -183,6 +187,8 @@ footer {text-align:center;padding:30px;color:var(--muted);font-size:12px}
     <button class="full" onclick="startGPS()">Start live GPS</button>
     <button class="full secondary" onclick="stopGPS()">Stop GPS</button>
     <a id="maplink" target="_blank" rel="noopener">Open location in Google Maps</a>
+    <div id="gpsMap" role="application" aria-label="Live phone GPS map"></div>
+    <p class="small">Map tiles © OpenStreetMap contributors. Your phone location is shown when GPS is started.</p>
   </section>
 
   <h2>Emergency contacts</h2>
@@ -252,6 +258,45 @@ let bleDevice = null;
 let bleCharacteristic = null;
 let gpsWatch = null;
 let latestLocation = null;
+let gpsMap = null;
+let gpsMarker = null;
+let gpsAccuracyCircle = null;
+
+function initializeGPSMap() {
+  if (gpsMap || !window.L) return;
+
+  gpsMap = L.map("gpsMap").setView([20.5937, 78.9629], 5);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+  }).addTo(gpsMap);
+}
+
+function showGPSOnMap(lat, lon, accuracy) {
+  initializeGPSMap();
+  if (!gpsMap || !Number.isFinite(lat) || !Number.isFinite(lon)) return;
+
+  const point = [lat, lon];
+
+  if (!gpsMarker) {
+    gpsMarker = L.marker(point).addTo(gpsMap).bindPopup("Phone's live location");
+    gpsMap.setView(point, 17);
+  } else {
+    gpsMarker.setLatLng(point);
+    gpsMap.panTo(point);
+  }
+
+  if (gpsAccuracyCircle) {
+    gpsAccuracyCircle.setLatLng(point);
+    gpsAccuracyCircle.setRadius(Number.isFinite(accuracy) ? accuracy : 0);
+  } else {
+    gpsAccuracyCircle = L.circle(point, {
+      radius: Number.isFinite(accuracy) ? accuracy : 0,
+      color: "#38a7ff",
+      fillOpacity: 0.12
+    }).addTo(gpsMap);
+  }
+}
 
 function setConnection(connected) {
   document.getElementById("deviceStatus").textContent =
@@ -394,6 +439,7 @@ function updateDashboard(data) {
     const link = document.getElementById("maplink");
     link.href = `https://www.google.com/maps?q=${data.latitude},${data.longitude}`;
     link.style.display = "inline-block";
+    showGPSOnMap(data.latitude, data.longitude, data.accuracy);
     document.getElementById("gpsStatus").textContent = "Location shared live";
     document.getElementById("gpsDot").className = "dot green";
   }
@@ -412,7 +458,8 @@ function startGPS() {
     const lat = position.coords.latitude;
     const lon = position.coords.longitude;
 
-    latestLocation = {lat, lon};
+    latestLocation = {lat, lon, accuracy: position.coords.accuracy};
+    showGPSOnMap(lat, lon, position.coords.accuracy);
 
     if (window.publishBlindNavData) {
       window.publishBlindNavData({
