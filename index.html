@@ -270,6 +270,18 @@ function initializeGPSMap() {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
   }).addTo(gpsMap);
+
+  // The caretaker page may finish laying out the map after Firebase sends
+  // its first update. Recalculate Leaflet's dimensions once the browser paints.
+  requestAnimationFrame(() => gpsMap && gpsMap.invalidateSize(true));
+  window.addEventListener("resize", () => {
+    if (gpsMap) gpsMap.invalidateSize(true);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && gpsMap) {
+      requestAnimationFrame(() => gpsMap && gpsMap.invalidateSize(true));
+    }
+  });
 }
 
 function showGPSOnMap(lat, lon, accuracy) {
@@ -279,11 +291,11 @@ function showGPSOnMap(lat, lon, accuracy) {
   const point = [lat, lon];
 
   if (!gpsMarker) {
-    gpsMarker = L.marker(point).addTo(gpsMap).bindPopup("Phone's live location");
+    gpsMarker = L.marker(point).addTo(gpsMap).bindPopup("Phone's shared live location");
     gpsMap.setView(point, 17);
   } else {
     gpsMarker.setLatLng(point);
-    gpsMap.panTo(point);
+    gpsMap.setView(point, gpsMap.getZoom(), { animate: false });
   }
 
   if (gpsAccuracyCircle) {
@@ -296,6 +308,9 @@ function showGPSOnMap(lat, lon, accuracy) {
       fillOpacity: 0.12
     }).addTo(gpsMap);
   }
+
+  // Force Leaflet to recalculate its tile grid after the location arrives.
+  requestAnimationFrame(() => gpsMap && gpsMap.invalidateSize(true));
 }
 
 function setConnection(connected) {
